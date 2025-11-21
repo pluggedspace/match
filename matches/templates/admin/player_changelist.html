@@ -1,19 +1,18 @@
 {% extends "admin/change_list.html" %}
+{% load admin_urls %}
 
-{% block object-tools %}
-  <div class="object-tools">
-    <ul class="object-tools">
-      <li>
+{% block object-tools-items %}
+    {{ block.super }}
+    {% if show_import_buttons %}
+    <li>
         <a href="{% url 'admin:matches_player_import_csv' %}" class="addlink">
-          Import Players CSV
+            📋 Import CSV
         </a>
-      </li>
-      <li>
-        <a href="#" class="addlink" onclick="alert('Please use the action dropdown to sync players.')">
-          Sync Players from API
+    </li>
+    <li>
+        <a href="{% url 'admin:matches_player_import_api' %}" class="addlink">
+            🌐 Import from API
         </a>
-      </li>
-    </ul>
-  </div>
-  {{ block.super }}
+    </li>
+    {% endif %}
 {% endblock %}

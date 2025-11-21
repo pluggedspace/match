@@ -1,0 +1,8 @@
+{% extends "admin/change_list.html" %}
+
+{% block object-tools %}
+    {{ block.super }}
+    <li>
+        <a class="addlink" href="{% url 'admin:gameweek_import_csv' %}">Import CSV</a>
+    </li>
+{% endblock %}

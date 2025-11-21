@@ -7,8 +7,7 @@ services:
       POSTGRES_DB: matchdb
       POSTGRES_USER: matchuser
       POSTGRES_PASSWORD: matchpass123
-    ports:
-      - "5432:5432"
+    
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U matchuser -d matchdb"]
       interval: 5s
@@ -19,17 +18,32 @@ services:
     networks:
       - internal_network
 
+  redis:
+    image: redis:7-alpine
+    container_name: match-redis
+    restart: always
+    networks:
+      - internal_network
+
+
   web:
     build: .
     container_name: match-web
     restart: always
-    command: gunicorn match.wsgi:application --bind 0.0.0.0:8006
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             gunicorn match.wsgi:application --bind 0.0.0.0:8001 --workers 1 --timeout 120"
     volumes:
+      - .:/app
       - match_static_volume:/app/static
       - match_media_volume:/app/media
+    working_dir: /app
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       DJANGO_SETTINGS_MODULE: match.settings
       POSTGRES_DB: matchdb
@@ -37,12 +51,11 @@ services:
       POSTGRES_PASSWORD: matchpass123
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
-      VIRTUAL_HOST: m.pluggedspace.org
-      VIRTUAL_PORT: 8006
-      LETSENCRYPT_HOST: m.pluggedspace.org
-      LETSENCRYPT_EMAIL: contact@pluggedspace.org
-    ports:
-      - "8006:8006"
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      TELEGRAM_BOT_API_KEY: "8084516709:AAFZiSWDBm_raXMqUEpDqF4_GrOgqvgxe64"  # ✅ Added
+      #DJANGO_SECRET_KEY: "your-production-secret-key-here"  # ✅ Added
+
     networks:
       - internal_network
       - nginx-proxy-net
@@ -64,6 +77,32 @@ services:
       POSTGRES_PASSWORD: matchpass123
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    networks:
+      - internal_network
+
+  worker:
+    build: .
+    container_name: match-worker
+    restart: always
+    command: celery -A match worker -l info
+    volumes:
+      - .:/app
+    working_dir: /app
+    depends_on:
+      - db
+      - redis
+      - web
+    environment:
+      DJANGO_SETTINGS_MODULE: match.settings
+      POSTGRES_DB: matchdb
+      POSTGRES_USER: matchuser
+      POSTGRES_PASSWORD: matchpass123
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
     networks:
       - internal_network
 

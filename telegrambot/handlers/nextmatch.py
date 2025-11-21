@@ -4,6 +4,7 @@ from django.utils import timezone
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 from matches.models import Prediction
+from .utils import get_or_create_telegram_user  # Import the helper function
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,9 @@ def get_next_prediction():
 async def nextmatch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /nextmatch command."""
     try:
+        # Wrap the synchronous function with sync_to_async
+        user = await sync_to_async(get_or_create_telegram_user)(update.effective_user)
+        
         pred = await get_next_prediction()
 
         if not pred:

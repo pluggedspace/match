@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from matches.models import Fixture, Team
+from matches.models import Fixture, Team, League
 from matches.api_client import get_fixtures, get_league_id_by_name_and_country
 from django.utils.dateparse import parse_datetime
 
@@ -39,6 +39,18 @@ class Command(BaseCommand):
         season = options["season"]
         next_n = options["next"]
 
+        # Get or create League instance first
+        league_instance, league_created = League.objects.get_or_create(
+            name=league_name,
+            defaults={
+                'country': country,
+                'code': league_name.upper().replace(' ', '_')
+            }
+        )
+        
+        if league_created:
+            self.stdout.write(f"Created new league: {league_name}")
+
         league_id = get_league_id_by_name_and_country(league_name, country, season)
         if not league_id:
             self.stdout.write(self.style.ERROR(
@@ -53,27 +65,40 @@ class Command(BaseCommand):
             home_info = item['teams']['home']
             away_info = item['teams']['away']
 
-            home_team, _ = Team.objects.get_or_create(
-                api_id=home_info['id'],
-                defaults={
-                    'name': home_info['name'],
-                    'league': league_id
-                }
+            # Handle home team - lookup by (name, country)
+            home_team, home_created = Team.objects.get_or_create(
+                name=home_info['name'],
+                country=country,
+                defaults={'api_id': home_info['id']}
             )
+            
+            # If team exists but has no api_id or different api_id, update it
+            if not home_created and (not home_team.api_id or home_team.api_id != home_info['id']):
+                home_team.api_id = home_info['id']
+                home_team.save()
+                self.stdout.write(f"Updated {home_team.name} api_id to {home_info['id']}")
 
-            away_team, _ = Team.objects.get_or_create(
-                api_id=away_info['id'],
-                defaults={
-                    'name': away_info['name'],
-                    'league': league_id
-                }
+            # Handle away team - lookup by (name, country)
+            away_team, away_created = Team.objects.get_or_create(
+                name=away_info['name'],
+                country=country,
+                defaults={'api_id': away_info['id']}
             )
+            
+            # If team exists but has no api_id or different api_id, update it
+            if not away_created and (not away_team.api_id or away_team.api_id != away_info['id']):
+                away_team.api_id = away_info['id']
+                away_team.save()
+                self.stdout.write(f"Updated {away_team.name} api_id to {away_info['id']}")
 
+            # Use League instance instead of string
             fixture, created = Fixture.objects.update_or_create(
                 id=fixture_info['id'],
                 defaults={
                     'date': parse_datetime(fixture_info['date']),
                     'status': fixture_info['status']['long'],
+                    'league': league_instance,  # Use League instance here
+                    'season': str(season),
                     'home_team': home_team,
                     'away_team': away_team
                 }

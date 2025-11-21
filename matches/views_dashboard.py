@@ -5,6 +5,13 @@ from matches.models import Prediction, Match
 from django.db.models import Count, Avg
 import numpy as np
 
+from django.db.models import Q
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
+from matches.models import Prediction, Fixture
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def prediction_overview(request):
@@ -13,10 +20,18 @@ def prediction_overview(request):
 
     correct = 0
     evaluated = 0
+
     for p in Prediction.objects.select_related('fixture'):
-        if p.match.result:
+        # Try to find the historical match corresponding to this fixture
+        match = Match.objects.filter(
+            home_team=p.fixture.home_team,
+            away_team=p.fixture.away_team,
+            date=p.fixture.date
+        ).first()
+
+        if match and match.result:  # only count if match has happened
             evaluated += 1
-            if p.match.result == p.result_pred:
+            if match.result == p.result_pred:
                 correct += 1
 
     accuracy = correct / evaluated if evaluated else None
@@ -61,27 +76,30 @@ def latest_predictions(request):
         } for p in predictions
     ])
     
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def compare_versions(request):
     version_a = request.GET.get('a', 'v1')
     version_b = request.GET.get('b', 'v2')
 
-    matches = Match.objects.filter(result__isnull=False)
+    # Get fixtures that already have a result
+    fixtures = Fixture.objects.filter(status='finished')
 
     correct_a = correct_b = total = 0
 
-    for match in matches:
+    for fixture in fixtures:
         try:
-            pred_a = Prediction.objects.get(match=match, model_version=version_a)
-            pred_b = Prediction.objects.get(match=match, model_version=version_b)
+            pred_a = Prediction.objects.get(fixture=fixture, model_version=version_a)
+            pred_b = Prediction.objects.get(fixture=fixture, model_version=version_b)
         except Prediction.DoesNotExist:
             continue
 
         total += 1
-        if pred_a.result_pred == match.result:
+        if fixture.result == pred_a.result_pred:
             correct_a += 1
-        if pred_b.result_pred == match.result:
+        if fixture.result == pred_b.result_pred:
             correct_b += 1
 
     return Response({
@@ -89,5 +107,5 @@ def compare_versions(request):
         "version_b": version_b,
         "accuracy_a": round(correct_a / total, 3) if total else None,
         "accuracy_b": round(correct_b / total, 3) if total else None,
-        "compared_matches": total
+        "compared_fixtures": total
     })

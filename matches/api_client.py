@@ -2,7 +2,7 @@ import requests
 import datetime
 
 
-API_KEY = '1ecad14232mshea32a62c1e4dc2ap181062jsn38bf6995676a'  # Replace this
+API_KEY = '1ecad14232mshea32a62c1e4dc2ap181062jsn38bf6995676a' 
 BASE_URL = 'https://api-football-v1.p.rapidapi.com/v3'
 
 HEADERS = {

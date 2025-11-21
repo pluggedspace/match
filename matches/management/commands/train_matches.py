@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from matches.logic.train_and_predict import train_and_predict  # adjust import to where your function is
+from matches.logic.train_and_predict import train_and_predict
 
 class Command(BaseCommand):
     help = "Train the match prediction model and generate predictions for upcoming matches."
@@ -14,6 +14,7 @@ class Command(BaseCommand):
                 self.style.SUCCESS(
                     f"✅ Training complete.\n"
                     f"Accuracy: {result['accuracy']}\n"
+                    f"CV Score: {result.get('cv_score', 'N/A')}\n"
                     f"Matches predicted: {result['matches_predicted']}"
                 )
             )
