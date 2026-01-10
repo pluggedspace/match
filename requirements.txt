@@ -6,7 +6,11 @@ requests
 
 celery
 redis
+sentry-sdk
 
+# AWS S3 storage
+boto3
+django-storages[s3]
 # Machine learning & data processing
 scikit-learn
 pandas

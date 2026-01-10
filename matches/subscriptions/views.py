@@ -42,7 +42,7 @@ def convert_amount(amount_ngn, target_currency):
 
 class StartSubscriptionView(APIView):
     """
-    Starts a subscription and initiates hosted payment session at payments.pluggedspace.org.
+    Starts a subscription and initiates hosted payment session.
     Auto-selects provider based on currency:
       - Paystack → NGN only
       - Flutterwave → multi-currency (USD, GHS, KES, ZAR, GBP, EUR, NGN)
@@ -139,7 +139,7 @@ class StartSubscriptionView(APIView):
 
         try:
             resp = requests.post(
-                "https://payments.pluggedspace.org/api/payments/initiate/",
+                f"{settings.PAYMENTS_API_BASE}/api/payments/initiate/",
                 json=payload,
                 headers=headers,
                 timeout=30,
@@ -199,7 +199,7 @@ def verify_subscription(request):
     # ✅ Call Pluggedspace verify endpoint
     try:
         resp = requests.get(
-            f"https://payments.pluggedspace.org/api/payments/verify/{reference}/",
+            f"{settings.PAYMENTS_API_BASE}/api/payments/verify/{reference}/",
             headers={"X-API-KEY": settings.PLUGGEDSPACE_API_KEY},
             timeout=20
         )

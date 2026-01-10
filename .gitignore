@@ -12,6 +12,8 @@
 .swiftpm/
 migrate_working_dir/
 .env
+# docker-compose.yml - Removed (genericized)
+# Dockerfile - Removed (genericized)
 
 # IntelliJ related
 *.iml
@@ -44,3 +46,29 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Django
+*.pot
+*.pyc
+__pycache__/
+db.sqlite3
+media/
+staticfiles/
+*.log
+local_settings.py
+
+# Secrets and Local Config
+.env
+credentials.json
+token.pickle
+
+# Backups and Data
+backup/
+backups/
+csv-uploads/
+token.pickle

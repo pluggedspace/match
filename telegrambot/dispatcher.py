@@ -14,6 +14,7 @@ from .handlers.nextmatch import nextmatch
 from .handlers.text import handle_text
 from .handlers.inline import inline_handler
 from .handlers.gameweek import gameweek_command
+from .handlers.upcoming import upcoming_command
 from .handlers.subscribe import register_subscribe_handlers
 from .handlers.help import help_command
 
@@ -27,6 +28,7 @@ def setup_application(app: Application) -> None:
         app.add_handler(CommandHandler("predict", predict_command))
         app.add_handler(CommandHandler("nextmatch", nextmatch))
         app.add_handler(CommandHandler("gameweek", gameweek_command))
+        app.add_handler(CommandHandler("upcoming", upcoming_command))
         app.add_handler(CommandHandler("help", help_command))  # ⬅️ register /help here
 
         register_subscribe_handlers(app)

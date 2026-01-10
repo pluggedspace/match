@@ -27,7 +27,7 @@ def get_prediction(team_a: str, team_b: str):
                 Q(fixture__away_team__name__icontains=team_a)
             )
         )
-        .select_related("fixture__home_team", "fixture__away_team")
+        .select_related("fixture__home_team", "fixture__away_team", "fixture__league", "fixture__competition")
         .first()
     )
 
@@ -44,14 +44,19 @@ async def predict_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """Handle /predict command by fetching from Prediction model and logging user request."""
     try:
         telegram_user = update.effective_user
-        user = await sync_to_async(get_or_create_telegram_user)(telegram_user)  # 🔹 link Telegram ↔ Django user
+        user = await sync_to_async(get_or_create_telegram_user)(telegram_user)
 
         text = " ".join(context.args)
 
         if " vs " not in text.lower():
             await update.message.reply_text(
-                "Usage: /predict <Team A> vs <Team B>\n"
-                "Example: /predict Arsenal vs Manchester United"
+                "❌ *Invalid Format*\n\n"
+                "Please use: `/predict <Team A> vs <Team B>`\n\n"
+                "📝 *Example:*\n"
+                "`/predict Arsenal vs Manchester United`\n\n"
+                "💡 _Tip: Make sure to include 'vs' between team names!_\n\n"
+                "Try: `/nextmatch` or `/help` for more commands.",
+                parse_mode="Markdown"
             )
             return
 
@@ -60,22 +65,54 @@ async def predict_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         pred = await get_prediction(team_a, team_b)
 
         if not pred:
-            await update.message.reply_text("❌ Prediction not found in database.")
+            await update.message.reply_text(
+                f"❌ *Prediction Not Found*\n\n"
+                f"No prediction available for:\n"
+                f"_{team_a}_ vs _{team_b}_\n\n"
+                f"💡 *Suggestions:*\n"
+                f"• Check team name spelling\n"
+                f"• Try `/nextmatch` for upcoming matches\n"
+                f"• Use `/help` to see all commands",
+                parse_mode="Markdown"
+            )
             return
 
-        # 🔹 Save this user's prediction request
+        # Save this user's prediction request
         await save_user_prediction(user, pred.fixture, pred.result_pred)
 
+        # Build context string
+        context_parts = []
+        if pred.fixture.competition:
+            context_parts.append(f"🏆 {pred.fixture.competition.name}")
+        elif pred.fixture.league:
+            context_parts.append(f"⚽ {pred.fixture.league.name}")
+        
+        context_str = " | ".join(context_parts) if context_parts else ""
+        
+        # Build confidence indicator (pred.confidence is stored as 0-1 float)
+        confidence_emoji = "🟢" if pred.confidence >= 0.7 else "🟡" if pred.confidence >= 0.5 else "🔴"
+
         msg = (
-            f"🔮 *Prediction* for {pred.fixture.home_team} vs {pred.fixture.away_team}:\n"
-            f"→ *Outcome*: {pred.result_pred.upper()}\n"
-            f"→ *Confidence*: {pred.confidence:.1f}%\n"
-            f"→ *Fair Odds*: Home {pred.fair_odds_home}, Draw {pred.fair_odds_draw}, Away {pred.fair_odds_away}"
+            f"🔮 *MATCH PREDICTION*\n\n"
+            f"⚽ *{pred.fixture.home_team}* vs *{pred.fixture.away_team}*\n"
+            + (f"{context_str}\n" if context_str else "")
+            + f"\n━━━━━━━━━━━━━━━━━━━━━\n\n"
+            + f"📊 *Predicted Outcome:* {pred.result_pred.upper()}\n"
+            + f"{confidence_emoji} *Confidence:* {pred.confidence * 100:.1f}%\n"
+            + f"📈 *Goal Difference:* {pred.goal_diff:+.1f}\n\n"
+            + f"💰 *Fair Odds:*\n"
+            + f"  • Home Win: {pred.fair_odds_home}\n"
+            + f"  • Draw: {pred.fair_odds_draw}\n"
+            + f"  • Away Win: {pred.fair_odds_away}\n\n"
+            + f"━━━━━━━━━━━━━━━━━━━━━"
         )
 
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📊 Form", callback_data=f"form:{pred.fixture.id}")],
-            [InlineKeyboardButton("⚔️ H2H", callback_data=f"h2h:{pred.fixture.id}")]
+            [
+                InlineKeyboardButton("📊 Team Form", callback_data=f"form:{pred.fixture.id}"),
+                InlineKeyboardButton("⚔️ Head to Head", callback_data=f"h2h:{pred.fixture.id}")
+            ],
+
         ])
 
         await update.message.reply_text(
@@ -86,4 +123,9 @@ async def predict_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     except Exception as e:
         logger.error(f"Error in predict_command: {e}", exc_info=True)
-        await update.message.reply_text("⚠️ An error occurred while fetching the prediction.")
+        await update.message.reply_text(
+            "⚠️ *Oops! Something went wrong*\n\n"
+            "We couldn't fetch the prediction. Please try again or contact support.\n\n"
+            "Use `/help` to see available commands.",
+            parse_mode="Markdown"
+        )

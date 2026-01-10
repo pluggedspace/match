@@ -1,0 +1,73 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<div class="content">
+    <h1>{{ title }}</h1>
+    
+    <form method="post" style="max-width: 800px;">
+        {% csrf_token %}
+        
+        <div class="module" style="margin-bottom: 20px;">
+            <h2>Select Team to Keep</h2>
+            <p style="color: #666; margin: 10px 0;">
+                Select which team should remain after the merge. All records from other teams will be transferred to this team.
+            </p>
+            
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: #f8f8f8;">
+                        <th style="padding: 10px; text-align: left; width: 50px;">Keep</th>
+                        <th style="padding: 10px; text-align: left;">ID</th>
+                        <th style="padding: 10px; text-align: left;">Team Name</th>
+                        <th style="padding: 10px; text-align: left;">Country</th>
+                        <th style="padding: 10px; text-align: left;">API ID</th>
+                        <th style="padding: 10px; text-align: right;">Matches</th>
+                        <th style="padding: 10px; text-align: right;">Fixtures</th>
+                        <th style="padding: 10px; text-align: right;">Players</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for team in teams %}
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 10px;">
+                            <input type="radio" name="keep_team" value="{{ team.id }}" required>
+                        </td>
+                        <td style="padding: 10px;">{{ team.id }}</td>
+                        <td style="padding: 10px;"><strong>{{ team.name }}</strong></td>
+                        <td style="padding: 10px;">{{ team.country }}</td>
+                        <td style="padding: 10px;">{{ team.api_id|default:"-" }}</td>
+                        <td style="padding: 10px; text-align: right;">
+                            {{ team.home_matches.count|add:team.away_matches.count }}
+                        </td>
+                        <td style="padding: 10px; text-align: right;">
+                            {{ team.home_fixtures.count|add:team.away_fixtures.count }}
+                        </td>
+                        <td style="padding: 10px; text-align: right;">
+                            {{ team.players.count }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="module" style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0; color: #856404;">⚠️ Warning</h3>
+            <p style="margin-bottom: 0; color: #856404;">
+                This action will:
+            </p>
+            <ul style="color: #856404;">
+                <li>Transfer all matches, fixtures, and players from merged teams to the selected team</li>
+                <li><strong>Permanently delete</strong> the teams that are not selected</li>
+                <li>This action <strong>cannot be undone</strong></li>
+            </ul>
+        </div>
+        
+        <div class="submit-row">
+            <input type="submit" value="Merge Teams" class="default" style="background: #417690;">
+            <a href="{% url 'admin:matches_team_changelist' %}" class="button cancel-link">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
