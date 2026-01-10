@@ -7,7 +7,7 @@ from matches.utils.payments import get_user_subscription
 User = get_user_model()
 
 class Command(BaseCommand):
-    help = "Sync user subscriptions from payments.pluggedspace.org"
+    help = "Sync user subscriptions from the configured payments API"
 
     def handle(self, *args, **kwargs):
         for user in User.objects.all():

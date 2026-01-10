@@ -16,12 +16,48 @@ RESULT_MAP = {
 }
 
 # ------------------------------
+# Country
+# ------------------------------
+class Country(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    code = models.CharField(max_length=10, unique=True, null=True, blank=True)  # ISO code
+    flag_url = models.URLField(blank=True, null=True)
+
+    class Meta:
+        verbose_name_plural = "Countries"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+# ------------------------------
+# Competition
+# ------------------------------
+class Competition(models.Model):
+    TYPE_CHOICES = [
+        ("LEAGUE", "Domestic League"),
+        ("CUP", "Domestic Cup"),
+        ("INTERNATIONAL", "International"),
+        ("CONTINENTAL", "Continental Cup"),
+    ]
+
+    name = models.CharField(max_length=100)
+    code = models.CharField(max_length=20, unique=True, null=True, blank=True)
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES, default="LEAGUE")
+    country = models.ForeignKey(Country, on_delete=models.SET_NULL, null=True, blank=True, related_name="competitions")
+    logo_url = models.URLField(blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
+# ------------------------------
 # Teams (canonical, no duplicates)
 # ------------------------------
 class Team(models.Model):
     api_id = models.CharField(max_length=50, null=True, blank=True, unique=False)
     name = models.CharField(max_length=100)
     country = models.CharField(max_length=50, default="England")
+    country_link = models.ForeignKey(Country, on_delete=models.SET_NULL, null=True, blank=True, related_name="teams")
 
     class Meta:
         unique_together = ("name", "country")
@@ -30,11 +66,38 @@ class Team(models.Model):
         return f"{self.name} ({self.country})"
 
     @classmethod
-    def get_or_create_canonical(cls, name, country="England", api_id=None):
-        if api_id:
-            team, _ = cls.objects.get_or_create(api_id=api_id, defaults={"name": name, "country": country})
+    def get_or_create_canonical(cls, name, country=None, country_link=None, api_id=None):
+        defaults = {"name": name}
+        if country:
+            defaults["country"] = country
         else:
-            team, _ = cls.objects.get_or_create(name=name, country=country)
+            defaults["country"] = "England" # Fallback if not provided, though we try to avoid it
+            
+        if country_link:
+            defaults["country_link"] = country_link
+
+        if api_id:
+            team, _ = cls.objects.get_or_create(api_id=api_id, defaults=defaults)
+        else:
+            # If no api_id, we try to match by name and country if provided, or just name
+            # This part is tricky because unique_together is (name, country)
+            # If we don't have country, we might create a duplicate if we just default to England
+            # But for now, let's stick to the requested logic: use provided info
+            
+            # We need to ensure 'country' is in the lookup if we want to match existing
+            lookup = {"name": name}
+            if country:
+                lookup["country"] = country
+            else:
+                lookup["country"] = "England" # Default for lookup to match existing behavior
+            
+            team, _ = cls.objects.get_or_create(**lookup, defaults=defaults)
+            
+            # Update country_link if it was missing and we have it now
+            if country_link and not team.country_link:
+                team.country_link = country_link
+                team.save()
+                
         return team
 
     @classmethod
@@ -61,6 +124,7 @@ class League(models.Model):
     name = models.CharField(max_length=100, unique=True)
     code = models.CharField(max_length=20, unique=True, null=True)  # e.g. "EPL", "LALIGA"
     country = models.CharField(max_length=50, blank=True, null=True)
+    country_link = models.ForeignKey(Country, on_delete=models.SET_NULL, null=True, blank=True, related_name="leagues")
     logo_url = models.URLField(blank=True, null=True)
 
     class Meta:
@@ -92,6 +156,7 @@ class Fixture(models.Model):
     date = models.DateTimeField()
     status = models.CharField(max_length=50)
     league = models.ForeignKey('League', on_delete=models.CASCADE, related_name='fixtures', db_column='league', null=True, blank=True)
+    competition = models.ForeignKey(Competition, on_delete=models.SET_NULL, related_name='fixtures', null=True, blank=True)
     season = models.CharField(max_length=20)
     home_team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="home_fixtures")
     away_team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="away_fixtures")
@@ -253,6 +318,7 @@ class Match(models.Model):
     home_team = models.ForeignKey(Team, related_name="home_matches", on_delete=models.CASCADE)
     away_team = models.ForeignKey(Team, related_name="away_matches", on_delete=models.CASCADE)
     league = models.ForeignKey('League', on_delete=models.CASCADE, related_name='matches', null=True, blank=True)
+    competition = models.ForeignKey(Competition, on_delete=models.SET_NULL, related_name='matches', null=True, blank=True)
     season = models.CharField(max_length=20)
     date = models.DateTimeField()
     home_score = models.IntegerField(null=True, blank=True)
@@ -269,7 +335,7 @@ class Match(models.Model):
         return f"{league.code}-{season}-{home_team.id}-{away_team.id}-{date.date()}"
 
     @classmethod
-    def import_from_csv(cls, file_path, league=None, season=None):
+    def import_from_csv(cls, file_path, league=None, season=None, competition=None):
         # If league is a string, convert it to League instance for backward compatibility
         if isinstance(league, str):
             league = League.get_or_create_league(league)
@@ -281,40 +347,76 @@ class Match(models.Model):
             imported = 0
             for row in reader:
                 try:
+                    # --- Competition Logic ---
+                    comp_name = row.get("Competition") or row.get("competition")
+                    if comp_name:
+                        comp_obj, _ = Competition.objects.get_or_create(name=comp_name)
+                    else:
+                        comp_obj = competition
+
+                    # --- Season Logic ---
+                    season_val = row.get("Season") or row.get("season") or season or "unknown"
+
+                    # --- League Logic ---
+                    league_name = row.get("League") or row.get("league")
+                    if league_name:
+                        league_obj = League.get_or_create_league(league_name)
+                    else:
+                        league_obj = league
+
+                    # --- Country Logic ---
+                    country_name = row.get("Country") or row.get("country")
+                    country_obj = None
+                    
+                    if country_name:
+                        # Try to find Country object
+                        country_obj = Country.objects.filter(name__iexact=country_name).first()
+                        if not country_obj:
+                            # Create if not exists? Or just use name? Let's use name for Team.country string
+                            pass
+                    else:
+                        # Infer from League
+                        if league_obj:
+                            if league_obj.country:
+                                country_name = league_obj.country
+                            if league_obj.country_link:
+                                country_obj = league_obj.country_link
+                                if not country_name:
+                                    country_name = country_obj.name
+                        
+                        # Infer from Competition if still unknown
+                        if not country_name and comp_obj:
+                            if comp_obj.country:
+                                country_obj = comp_obj.country
+                                country_name = country_obj.name
+
+                    # Fallback
+                    if not country_name:
+                        country_name = "England" # Last resort default
+
                     home_team = Team.get_or_create_canonical(
                         name=row.get("HomeTeam") or row.get("Home Team"),
                         api_id=row.get("home_team_api_id"),
+                        country=country_name,
+                        country_link=country_obj
                     )
                     away_team = Team.get_or_create_canonical(
                         name=row.get("AwayTeam") or row.get("Away Team"),
                         api_id=row.get("away_team_api_id"),
+                        country=country_name,
+                        country_link=country_obj
                     )
 
-                    date_str = row.get("Date")
-                    date = parse_datetime(date_str)
-                    if not date:
-                        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d/%m/%y"):
-                            try:
-                                date = datetime.strptime(date_str, fmt)
-                                break
-                            except Exception:
-                                continue
-
-                    home_score = row.get("FTHG") or row.get("Home Score")
-                    away_score = row.get("FTAG") or row.get("Away Score")
-
-                    raw_result = (row.get("FTR") or row.get("Result", "")).strip()
-                    result = RESULT_MAP.get(raw_result.upper()) or RESULT_MAP.get(raw_result.lower())
-
-                    fixture_id = cls.canonical_fixture_id(home_team, away_team, league, season or "unknown", date)
+                    fixture_id = cls.canonical_fixture_id(home_team, away_team, league_obj, season_val, date)
 
                     cls.objects.update_or_create(
                         fixture_id=fixture_id,
                         defaults={
                             "home_team": home_team,
                             "away_team": away_team,
-                            "league": league,
-                            "season": season or "unknown",
+                            "league": league_obj,
+                            "competition": comp_obj,
+                            "season": season_val,
                             "date": date,
                             "home_score": int(home_score) if home_score else None,
                             "away_score": int(away_score) if away_score else None,
@@ -381,6 +483,48 @@ class Gameweek(models.Model):
     def __str__(self):
         return f"GW {self.number}"
 
+    @classmethod
+    def import_from_csv(cls, file_path):
+        with open(file_path, newline="", encoding="utf-8") as csvfile:
+            reader = csv.DictReader(csvfile)
+            imported = 0
+            for row in reader:
+                try:
+                    number = int(row.get("number") or row.get("Number"))
+                    
+                    start_date_str = row.get("start_date") or row.get("Start Date")
+                    start_date = parse_datetime(start_date_str)
+                    if not start_date:
+                        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d/%m/%y"):
+                            try:
+                                start_date = datetime.strptime(start_date_str, fmt)
+                                break
+                            except Exception:
+                                continue
+
+                    end_date_str = row.get("end_date") or row.get("End Date")
+                    end_date = parse_datetime(end_date_str)
+                    if not end_date:
+                        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d/%m/%y"):
+                            try:
+                                end_date = datetime.strptime(end_date_str, fmt)
+                                break
+                            except Exception:
+                                continue
+
+                    cls.objects.update_or_create(
+                        number=number,
+                        defaults={
+                            "start_date": start_date,
+                            "end_date": end_date,
+                        },
+                    )
+                    imported += 1
+                except Exception as e:
+                    print(f"Skipping row due to error: {e} | Row: {row}")
+                    continue
+            print(f"✅ Imported {imported} gameweeks from {file_path}")
+
 
 # ------------------------------
 # Telegram Profiles
@@ -419,3 +563,119 @@ class UserSubscription(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.plan_name} ({self.status})"
+
+
+
+
+# ------------------------------
+# CSV Upload Tracking
+# ------------------------------
+class CSVUpload(models.Model):
+    """Track CSV uploads and background processing status"""
+    
+    MODEL_CHOICES = [
+        ('match', 'Match'),
+        ('fixture', 'Fixture'),
+        ('team', 'Team'),
+        ('player', 'Player'),
+        ('gameweek', 'Gameweek'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+    
+    # File storage
+    from matches.storage import CSVUploadStorage
+    file = models.FileField(upload_to='csv-uploads/', storage=CSVUploadStorage())
+    
+    # Import configuration
+    model_type = models.CharField(max_length=20, choices=MODEL_CHOICES)
+    league = models.ForeignKey(League, on_delete=models.SET_NULL, null=True, blank=True)
+    competition = models.ForeignKey(Competition, on_delete=models.SET_NULL, null=True, blank=True)
+    season = models.CharField(max_length=20, blank=True, null=True)
+    
+    # Processing status
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    celery_task_id = models.CharField(max_length=255, blank=True, null=True)
+    
+    # Progress tracking
+    total_rows = models.IntegerField(default=0)
+    processed_rows = models.IntegerField(default=0)
+    successful_rows = models.IntegerField(default=0)
+    failed_rows = models.IntegerField(default=0)
+    error_message = models.TextField(blank=True, null=True)
+    
+    # Metadata
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'CSV Upload'
+        verbose_name_plural = 'CSV Uploads'
+    
+    def __str__(self):
+        return f"{self.get_model_type_display()} - {self.status} ({self.created_at.strftime('%Y-%m-%d %H:%M')})"
+    
+    @property
+    def progress_percentage(self):
+        """Calculate progress percentage"""
+        if self.total_rows == 0:
+            return 0
+        return (self.processed_rows / self.total_rows) * 100
+
+# ------------------------------
+# Model Configuration
+# ------------------------------
+class ModelConfig(models.Model):
+    league = models.ForeignKey(League, on_delete=models.CASCADE, null=True, blank=True)
+    competition = models.ForeignKey(Competition, on_delete=models.CASCADE, null=True, blank=True)
+    country = models.ForeignKey(Country, on_delete=models.CASCADE, null=True, blank=True)
+    
+    model_type = models.CharField(max_length=50, default="RandomForest")
+    
+    # Hyperparameters
+    n_estimators = models.IntegerField(default=100)
+    max_depth = models.IntegerField(default=10, null=True, blank=True)
+    min_samples_split = models.IntegerField(default=5)
+    
+    # Feature Weights
+    weight_home_form = models.FloatField(default=1.0)
+    weight_away_form = models.FloatField(default=1.0)
+    weight_home_strength = models.FloatField(default=1.0)
+    weight_away_strength = models.FloatField(default=1.0)
+    weight_home_injuries = models.FloatField(default=1.0)
+    weight_away_injuries = models.FloatField(default=1.0)
+    weight_home_goal_avg = models.FloatField(default=1.0)
+    weight_away_goal_avg = models.FloatField(default=1.0)
+    weight_form_diff = models.FloatField(default=1.0)
+    weight_strength_diff = models.FloatField(default=1.0)
+    weight_home_win_rate = models.FloatField(default=1.0)
+    weight_home_draw_rate = models.FloatField(default=1.0)
+    weight_away_win_rate = models.FloatField(default=1.0)
+    weight_away_draw_rate = models.FloatField(default=1.0)
+    weight_home_advantage = models.FloatField(default=1.0)
+    
+    # Deprecated fields (kept temporarily if needed, but removing as per request "instead of json")
+    # hyperparameters = models.JSONField(default=dict, blank=True)
+    # feature_weights = models.JSONField(default=dict, blank=True)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Model Configuration"
+        verbose_name_plural = "Model Configurations"
+
+    def __str__(self):
+        context = []
+        if self.league: context.append(f"League: {self.league.name}")
+        if self.competition: context.append(f"Comp: {self.competition.name}")
+        if self.country: context.append(f"Country: {self.country.name}")
+        return f"Config ({', '.join(context) or 'Global'})"

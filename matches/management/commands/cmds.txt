@@ -1,15 +1,49 @@
+# ===========================
+# TRAINING COMMANDS
+# ===========================
+
+# Global training (all matches across all leagues/competitions)
+python manage.py train_matches
+
+# Train per league (replace <league_id> with actual League ID from database)
+python manage.py train_matches --league 1
+python manage.py train_matches --league 2
+
+# Train per competition (replace <competition_id> with actual Competition ID from database)
+python manage.py train_matches --competition 1
+python manage.py train_matches --competition 2
+
+# Train per country (replace <country_id> with actual Country ID from database)
+python manage.py train_matches --country 1
+
+# Legacy command (uses saved model file) - Updated to use date-aware features
+python manage.py train_model
+python manage.py train_model --retrain
+python manage.py train_model --model-version v3
+
+
+# ===========================
+# DATA SYNC COMMANDS
+# ===========================
+
 python manage.py settle_bets
 python manage.py sync_fixtures
 python manage.py sync_teams
 python manage.py sync_past_matches
 python manage.py sync_players
-python manage.py train_model
 
-
+# Sync teams by specific league/season
 python manage.py sync_teams --premier-league-england --season 2024
 python manage.py sync_teams --bundesliga-germany --season 2024
 python manage.py sync_teams --la-liga-spain --season 2025
 
-
-
+# Sync fixtures for specific league
 python manage.py sync_fixtures --league-name "Premier League" --country "England" --season 2025 --next 15
+
+
+# ===========================
+# NOTES
+# ===========================
+# - Use train_matches for production (supports per-league/competition training + ModelConfig)
+# - train_model is legacy but now updated with date-aware features
+# - All training now prevents data leakage by using date-aware feature extraction

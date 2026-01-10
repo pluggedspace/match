@@ -12,7 +12,7 @@ from .utils import get_or_create_telegram_user
 from asgiref.sync import sync_to_async
 
 logger = logging.getLogger(__name__)
-API_BASE = f"{settings.BASE_URL}/api/subscriptions/start/"
+API_BASE = f"{settings.PAYMENTS_API_BASE}/initiate/"
 VERIFY_RETRIES = 5
 VERIFY_DELAY = 15  # seconds between retries
 
@@ -151,7 +151,10 @@ async def initiate_subscription(query, provider, email, currency):
         "email": email,
     }
 
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        "X-API-KEY": settings.PLUGGEDSPACE_API_KEY
+    }
 
     try:
         logger.info(f"Initiating subscription with payload: {payload}")
@@ -213,7 +216,7 @@ async def initiate_subscription(query, provider, email, currency):
 
 # ---------- STEP 5: VERIFY PAYMENT STATUS ----------
 async def verify_subscription_status(query, reference):
-    verify_url = f"https://payments.pluggedspace.org/api/payments/verify/{reference}/"
+    verify_url = f"{settings.PAYMENTS_API_BASE}/verify/{reference}/"
     status = "pending"
     verify_data = {}
 

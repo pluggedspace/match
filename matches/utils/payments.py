@@ -2,7 +2,7 @@
 import requests
 from django.conf import settings
 
-PAYMENTS_API_BASE = getattr(settings, "PAYMENTS_API_BASE", "https://payments.pluggedspace.org/api")
+PAYMENTS_API_BASE = getattr(settings, "PAYMENTS_API_BASE", "")
 PLUGGEDSPACE_API_KEY = getattr(settings, "PLUGGEDSPACE_API_KEY", "")
 
 def get_user_subscription(email: str):

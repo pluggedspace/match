@@ -4,18 +4,29 @@ import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+import sentry_sdk
+
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN", ""),
+    # Add data like request headers and IP for users,
+    # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+    send_default_pii=True,
+)
+
 # Security
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-fallback-key-for-dev-only')
-
+# Increase the limit to handle bulk deletions
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000 
 # Debug
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = ['api.pluggedspace.org', 'match-web', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['*']
 
 FORCE_SCRIPT_NAME = "/match"
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://api.pluggedspace.org",
+    "http://localhost",
+    "http://127.0.0.1",
 ]
 
 USE_X_FORWARDED_HOST = True
@@ -34,6 +45,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'storages',  # django-storages for S3
     'matches.apps.MatchConfig',
     'rest_framework',
     'telegrambot',
@@ -112,8 +124,51 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 if not DEBUG:
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-MEDIA_URL = "/match/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+# Media files (S3 Storage)
+# ============================================
+# This works with both AWS S3 and Backblaze B2
+# 
+# For AWS S3:
+#   AWS_ACCESS_KEY_ID = your AWS access key
+#   AWS_SECRET_ACCESS_KEY = your AWS secret key
+#   AWS_STORAGE_BUCKET_NAME = your-bucket-name
+#   AWS_S3_REGION_NAME = us-east-1 (or your region)
+#   AWS_S3_ENDPOINT_URL = (leave empty)
+#
+# For Backblaze B2:
+#   AWS_ACCESS_KEY_ID = your B2 keyID
+#   AWS_SECRET_ACCESS_KEY = your B2 applicationKey
+#   AWS_STORAGE_BUCKET_NAME = your-bucket-name
+#   AWS_S3_REGION_NAME = us-west-000 (or your region)
+#   AWS_S3_ENDPOINT_URL = https://s3.us-west-000.backblazeb2.com
+# ============================================
+
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', '')  # ✅ Uses .env
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', '')  # ✅ Uses .env  
+AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME', 'match-bot')  # ✅ Matches .env
+AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'ca-east-006')  # ✅ Matches .env
+AWS_S3_ENDPOINT_URL = os.getenv('AWS_S3_ENDPOINT_URL', None)  # ✅ Uses .env
+
+# Build the custom domain URL
+if AWS_S3_ENDPOINT_URL:
+    # Backblaze B2
+    AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.{AWS_S3_ENDPOINT_URL.replace("https://", "")}'
+else:
+    # AWS S3
+    AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
+
+AWS_S3_FILE_OVERWRITE = False
+AWS_DEFAULT_ACL = 'private'
+AWS_S3_SIGNATURE_VERSION = 's3v4'
+
+# Use S3 for media files if AWS credentials are provided
+if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
+    DEFAULT_FILE_STORAGE = 'matches.storage.MediaStorage'
+    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
+else:
+    # Fallback to local storage for development
+    MEDIA_URL = "/match/media/"
+    MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -123,9 +178,10 @@ CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0')
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
 
 # External APIs
-PLUGGEDSPACE_API_KEY = "1b8d4356453b69302d8706e305d728fa190ff826bfe896f14b98d6dd2ab3c51c"
-PAYMENTS_API_BASE = "https://payments.pluggedspace.org/api/payments"
-BASE_URL = "https://api.pluggedspace.org/match"
+PLUGGEDSPACE_API_KEY = os.getenv("PLUGGEDSPACE_API_KEY", "")
+PAYMENTS_API_BASE = "https://example.com/pay"
+BASE_URL = "https://example.com/match"
 
-# Telegram Bot - ✅ FIXED
-TELEGRAM_BOT_API_KEY = os.getenv("TELEGRAM_BOT_API_KEY", "d9058fe5d7671ebfaa31e7bdfd3613b5faffd876d2ed2cdf2264a9035077409e")
+# Telegram Bot
+TELEGRAM_BOT_API_KEY = os.getenv("TELEGRAM_BOT_API_KEY", "")
+
