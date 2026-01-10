@@ -1,6 +1,17 @@
 # Match Bot
 
-This is a Django-based project for the Match Bot service, including Telegram bot integration and S3 media storage support.
+## About
+
+Match Bot is a sophisticated **Machine Learning-powered Match Prediction Engine**. It leverages historical data and advanced algorithms to predict match outcomes with high accuracy. The system is fully integrated with Telegram for delivering predictions and managing user subscriptions.
+
+**Key Features:**
+- **ML Prediction Engine**: Uses advanced machine learning models to analyze and predict match results.
+- **Telegram Integration**: Seamless interaction for users directly within Telegram.
+- **Subscription Management**: Supports monthly/yearly subscriptions with automated expiration and renewal tracking.
+- **Multi-Provider Payments**: Integrated with **Paystack** (NGN) and **Flutterwave** (Multi-currency: USD, GHS, KES, etc.) for flexible payment options.
+- **Scalable Storage**: Configured to work with AWS S3 or Backblaze B2 for handling media assets.
+- **Background Tasks**: Utilizes Celery and Redis for efficient off-loading of heavy tasks like subscription syncing and notifications.
+- **Secure Architecture**: Built with security best practices, including environment-based configuration and secure payment verification.
 
 ## Prerequisites
 
