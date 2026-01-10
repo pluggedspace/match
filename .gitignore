@@ -12,7 +12,8 @@
 .swiftpm/
 migrate_working_dir/
 .env
-
+docker-compose.yml
+Dockerfile
 # IntelliJ related
 *.iml
 *.ipr

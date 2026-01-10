@@ -69,4 +69,5 @@ celery -A match worker -l info
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is free for non-commercial use. Commercial use requires explicit permission from the author.
+See the [LICENSE](LICENSE) file for details.
