@@ -12,8 +12,6 @@
 .swiftpm/
 migrate_working_dir/
 .env
-# docker-compose.yml - Removed (genericized)
-# Dockerfile - Removed (genericized)
 
 # IntelliJ related
 *.iml
